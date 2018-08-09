@@ -12,9 +12,10 @@ class List extends Component {
       checkedItems: []
     };
 
-    // Forcing 'toggleCheck' to always have the same 'this' context no matter where it is invoked/executed
+    // Forcing local methods to always have the same 'this' context no matter where it is invoked/executed
     this.toggleCheck = this.toggleCheck.bind(this);
     this.addItem = this.addItem.bind(this);
+    this.deleteItem = this.deleteItem.bind(this);
   }
 
   // Our Method
@@ -22,7 +23,7 @@ class List extends Component {
     const { checkedItems } = this.state; // [......]
     const itemText = e.target.innerHTML; // Item1
     const itemIndex = checkedItems.indexOf(itemText); // 0
-    console.log(`Toggled ${ itemIndex === -1 ? 'Check' : 'UnChecked' } `, itemText)
+    console.log(`Toggled ${ itemIndex === -1 ? 'Check' : 'UnChecked' }: `, itemText)
 
     // Remember if it is "-1" it is NOT in the array!!!!!
     if(itemIndex === -1) {
@@ -45,6 +46,22 @@ class List extends Component {
   }
 
   // Our Method
+  deleteItem(e) {
+    const { items } = this.state; // [......]
+    const itemText = e.target.innerHTML; // Item3
+    const itemIndex = items.indexOf(itemText); // 2 
+
+    console.log("Delete Item: ", itemText);
+
+    this.setState({
+      items: [
+        ...items.slice(0, itemIndex),
+        ...items.slice(itemIndex + 1)
+      ]
+    });
+  }
+
+  // Our Method
   addItem(e) {
     e.preventDefault(); // Stops default 'form submit' page reload
 
@@ -60,6 +77,8 @@ class List extends Component {
         ...items,
         newItem
       ]
+    }, () => {
+      inputElement.value = '';
     });
   }
 
@@ -74,12 +93,21 @@ class List extends Component {
         </form>
         <ul>
           {
-            items.map((item, index) => { // item => Cheese
+            items.map((item, index) => { // item => 'Cheese'
               const myStyle = {
                 textDecoration: checkedItems.includes(item) ? 'line-through' : 'none'
               }; // line-through or none
 
-              return <li key={ index } style={ myStyle } onClick={ this.toggleCheck }>{ item }</li>;
+              return (
+                <li 
+                  key={ index }
+                  style={ myStyle }
+                  onClick={ this.toggleCheck }
+                  onDoubleClick={ this.deleteItem }
+                >
+                  { item }
+                </li>
+              );
             })
           }
         </ul>
