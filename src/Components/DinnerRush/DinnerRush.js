@@ -3,15 +3,28 @@ import React, { Component } from 'react';
 import ReactDOM from 'react-dom';
 import * as PIXI from 'pixi.js';
 import isEqual from 'lodash.isequal';
+import { getLevelConfig } from './config';
 import './DinnerRush.css';
 
-const speedMultiplier = 2;
+const speedMultiplier = 5;
+const storePadding = 50;
+const itemSpacing = 75;
+const aisleSpacing = 150;
+const listItemAnchor = 50;
+const listItemSpacing = 15;
+
 
 export default class DinnerRush extends Component {
   constructor(props) {
     super(props);
 
+    const level = 1;
+    this.config = getLevelConfig(level);
+    const { shoppingList } = this.config;
+
     this.state = {
+      level,
+      shoppingList,
       startPoint: {},
       endPoint: {},
       path: []
@@ -46,11 +59,13 @@ export default class DinnerRush extends Component {
 
     // Initialize static and interactive items
     this.initItems();
+    // Initialize shopping
+    this.initShoppingList();
 
-    this.customer = new PIXI.extras.AnimatedSprite(this.walkingTextures.right);
-    this.customer.x = this.app.screen.width/4;
-    this.customer.y = this.app.screen.height/4;
-    this.customer.anchor.set(0.5);
+    this.customer = new PIXI.extras.AnimatedSprite(this.walkingTextures.down);
+    this.customer.x = this.app.screen.width - 275;
+    this.customer.y = this.app.screen.height - 75;
+    this.customer.anchor.set(0.5, 0);
     this.customer.animationSpeed = 0.1 * speedMultiplier;
     this.app.stage.addChild(this.customer);
 
@@ -65,7 +80,10 @@ export default class DinnerRush extends Component {
 
         this.followPath(path);
       } else {
-        this.customer.textures = this.walkingTextures.down;
+        if(this.onPathComplete) {
+          this.onPathComplete();
+        }        
+
         this.customer.gotoAndStop(0);
       }
       
@@ -77,42 +95,62 @@ export default class DinnerRush extends Component {
   }
 
   initItems() {
-    this.items = [
-      {
-        name: 'Cherry',
-        sprite: new PIXI.Sprite(PIXI.Texture.fromFrame(`fruit-row1-col1`)),
-        position: [ .2, .7 ],
-        active: true
-      },
-      {
-        name: 'Peach',
-        sprite: new PIXI.Sprite(PIXI.Texture.fromFrame(`fruit-row1-col2`)),
-        position: [ .9, .9 ],
-        active: true
-      },
-      {
-        name: 'fdsgs',
-        sprite: new PIXI.Sprite(PIXI.Texture.fromFrame(`fruit-row1-col3`)),
-        position: [ .5, .5 ],
-        active: true
-      }
-    ];
+    this.items = this.config.storeItems.map((item) => {
+      const { position, active, name } = item;
+      const [ x, y ] = position;
 
-    this.items.forEach((item) => {
-      const { sprite, position, active } = item;
-
-      sprite.x = this.app.screen.width * position[0];
-      sprite.y = this.app.screen.height * position[1];
-      sprite.anchor.set(0.5);
+      const sprite = new PIXI.Sprite(PIXI.Texture.fromFrame(item.sprite));
+      sprite.x = storePadding + itemSpacing * x;
+      sprite.y = this.app.screen.height - (storePadding + aisleSpacing * y);
+      sprite.anchor.set(0.5, 1);
       sprite.interactive = true;
 
       sprite.on('click', (e) => {
-        this.goToDestination(e.target);
+        this.goToDestination(e.target, 'y', () => {
+          
+          setTimeout(() => {
+            this.goToDestination(this.state.startPoint, 'x', () => { 
+              this.customer.textures = this.walkingTextures.down;
+            });
+            sprite.renderable = false;
+          }, 750);
+    
+          this.customer.textures = this.walkingTextures.up;
+          sprite.interactive = false;
+        });
       });
 
-      if(active) {
+      const isShoppable = this.state.shoppingList.includes(name.toLocaleLowerCase());
+
+      if(active && isShoppable) {
         this.app.stage.addChild(sprite);
       }
+
+      return { ...item, sprite };
+    });
+  }
+
+  initShoppingList() {
+    const { shoppingList } = this.state;
+
+    const style = { fontFamily: 'Arial', fontSize: 18, fill: 0xff1010, align: 'center' };
+    const title = new PIXI.Text(`Shopping List:`, style)
+    title.x = this.app.screen.width - (storePadding + 125);
+    title.y = this.app.screen.height - (storePadding + listItemSpacing * (shoppingList.length + 2));
+
+    this.app.stage.addChild(title);
+
+    this.shoppingList = shoppingList.map((name, index) => {
+        const sprite = new PIXI.Text(name, style);
+        sprite.x = this.app.screen.width - (storePadding + 100);
+        sprite.y = this.app.screen.height - (storePadding + listItemSpacing * (index+1));
+  
+        this.app.stage.addChild(sprite);
+
+        return {
+          name,
+          sprite 
+        };
     });
   }
 
@@ -120,14 +158,19 @@ export default class DinnerRush extends Component {
     // Update state/status of items, ie: handle removing dead sprites
     this.items.forEach((item) => {
       if(item.sprite.renderable === false) {
+        const listItem = this.shoppingList.find(({ name }) => name === item.name)
+
+        listItem.sprite.style.fill = '#D3D3D3';
         this.app.stage.removeChild(item.sprite);
         item.active = false;
       }
     });
   }
 
-  goToDestination(target, initialTravelAxis='y') {
+  goToDestination(target, initialTravelAxis='y', callback) {
     if(this.state.path.length === 0) {
+      this.onPathComplete = callback;
+
       this.state.startPoint = { x: this.customer.x, y: this.customer.y };
       this.state.endPoint = { x: target.x, y: target.y };
       this.state.path = this.createPath(target, initialTravelAxis);
@@ -207,28 +250,28 @@ export default class DinnerRush extends Component {
     }
   }
 
-  detectCollision(player, item) {
-    if (item.interactive === false) return; // Don't detect collision for 'dead' sprites
-    if (item.x < player.x + player.width &&
-      item.x + item.width > player.x &&
-      item.y < player.y + player.height &&
-      item.height + item.y > player.y) {
-      // collision detected!
-      console.log('collision detected');
-      // stop the customer from running into the sprite
-      this.state.path = [];
-      this.goToDestination(this.state.startPoint, 'x');
+  // detectCollision(player, item) {
+  //   if (item.interactive === false) return; // Don't detect collision for 'dead' sprites
+  //   if (item.x < player.x + player.width &&
+  //     item.x + item.width > player.x &&
+  //     item.y < player.y + player.height &&
+  //     item.height + item.y > player.y) {
+  //     // collision detected!
+  //     console.log('collision detected');
+  //     // stop the customer from running into the sprite
+  //     this.state.path = [];
+  //     this.goToDestination(this.state.startPoint, 'x');
 
-      item.interactive = false;
-      item.renderable = false;
-    }
-  }
+  //     item.interactive = false;
+  //     item.renderable = false;
+  //   }
+  // }
 
-  detectCollisions() {
-    this.items.forEach((item) => {
-      this.detectCollision(this.customer, item.sprite);
-    });
-  }
+  // detectCollisions() {
+  //   this.items.forEach((item) => {
+  //     this.detectCollision(this.customer, item.sprite);
+  //   });
+  // }
 
   // Either change Y or X NOT both!
   walk(dx,dy) {
@@ -250,7 +293,7 @@ export default class DinnerRush extends Component {
       this.customer.y = newY;
     }
 
-    this.detectCollisions();
+    // this.detectCollisions();
   }
 
   render() {
