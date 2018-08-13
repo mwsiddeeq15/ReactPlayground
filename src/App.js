@@ -1,5 +1,5 @@
 import React, { Component } from 'react';
-import MyList from './List';
+import { List, DinnerRush } from './Components';
 import logo from './logo.svg';
 import './App.css';
 
@@ -11,7 +11,7 @@ class App extends Component {
           <img src={logo} className="App-logo" alt="logo" />
           <h1 className="App-title">Welcome to the Jungle</h1>
         </header>
-        <MyList/>
+        <DinnerRush/>
       </div>
     );
   }
