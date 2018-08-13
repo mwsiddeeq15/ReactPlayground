@@ -6,20 +6,15 @@ import isEqual from 'lodash.isequal';
 import './DinnerRush.css';
 
 const speedMultiplier = 2;
-const directions = {
-  UP: 'up',
-  RIGHT: 'right',
-  DOWN: 'down',
-  LEFT: 'left'
-}
 
 export default class DinnerRush extends Component {
   constructor(props) {
     super(props);
 
     this.state = {
-      path: [],
-      direction: directions.RIGHT,
+      startPoint: {},
+      endPoint: {},
+      path: []
     };
 
     this.onAssetsLoaded = this.onAssetsLoaded.bind(this);
@@ -32,7 +27,7 @@ export default class DinnerRush extends Component {
       this.app = new PIXI.Application();
       this.containerNode.appendChild(this.app.view);
       this.app.stop();
-      
+
       PIXI.loader
         .add('customer', 'http://localhost:5001/resources/customer.json')
         .add('fruit', 'http://localhost:5001/resources/fruit.json')
@@ -49,36 +44,16 @@ export default class DinnerRush extends Component {
       left: Array.from(new Array(4)).map((_,i)=> PIXI.Texture.fromFrame(`customer-row2-col${ i+1 }`) )
     }
 
-    const fruitTexture = PIXI.Texture.fromFrame(`fruit-row1-col1`);
-    this.fruit = new PIXI.Sprite(fruitTexture);
-    this.fruit.x = this.app.screen.width/6;
-    this.fruit.y = this.app.screen.height/2;
-    this.fruit.anchor.set(0.5);
-    this.fruit.interactive = true;
-    this.fruit.on('click', (e) => {
-      this.goToDestination(e.target);
-    })
-    this.app.stage.addChild(this.fruit);
-
-
-    const fruitTexture2 = PIXI.Texture.fromFrame(`fruit-row1-col2`);
-    this.fruit2 = new PIXI.Sprite(fruitTexture2);
-    this.fruit2.x = this.app.screen.width - 60;
-    this.fruit2.y = this.app.screen.height - 60;
-    this.fruit2.anchor.set(0.5);
-    this.fruit2.interactive = true;
-    this.fruit2.on('click', (e) => {
-      this.goToDestination(e.target);
-    })
-    this.app.stage.addChild(this.fruit2);
+    // Initialize static and interactive items
+    this.initItems();
 
     this.customer = new PIXI.extras.AnimatedSprite(this.walkingTextures.right);
     this.customer.x = this.app.screen.width/4;
     this.customer.y = this.app.screen.height/4;
     this.customer.anchor.set(0.5);
-    this.customer.animationSpeed = .1 * speedMultiplier;
-    this.customer.play();
-    
+    this.customer.animationSpeed = 0.1 * speedMultiplier;
+    this.app.stage.addChild(this.customer);
+
     this.app.ticker.add(() => {
 
       const { path } = this.state;
@@ -90,20 +65,73 @@ export default class DinnerRush extends Component {
 
         this.followPath(path);
       } else {
+        this.customer.textures = this.walkingTextures.down;
         this.customer.gotoAndStop(0);
       }
+      
+      this.refreshItems();
     });
-
-    this.app.stage.addChild(this.customer);
 
     // start animating
     this.app.start();
   }
 
-  goToDestination(target) {
-    // if(this.state.path.length === 0) {
-      this.state.path = this.createPath(target);
-    // }
+  initItems() {
+    this.items = [
+      {
+        name: 'Cherry',
+        sprite: new PIXI.Sprite(PIXI.Texture.fromFrame(`fruit-row1-col1`)),
+        position: [ .2, .7 ],
+        active: true
+      },
+      {
+        name: 'Peach',
+        sprite: new PIXI.Sprite(PIXI.Texture.fromFrame(`fruit-row1-col2`)),
+        position: [ .9, .9 ],
+        active: true
+      },
+      {
+        name: 'fdsgs',
+        sprite: new PIXI.Sprite(PIXI.Texture.fromFrame(`fruit-row1-col3`)),
+        position: [ .5, .5 ],
+        active: true
+      }
+    ];
+
+    this.items.forEach((item) => {
+      const { sprite, position, active } = item;
+
+      sprite.x = this.app.screen.width * position[0];
+      sprite.y = this.app.screen.height * position[1];
+      sprite.anchor.set(0.5);
+      sprite.interactive = true;
+
+      sprite.on('click', (e) => {
+        this.goToDestination(e.target);
+      });
+
+      if(active) {
+        this.app.stage.addChild(sprite);
+      }
+    });
+  }
+
+  refreshItems() {
+    // Update state/status of items, ie: handle removing dead sprites
+    this.items.forEach((item) => {
+      if(item.sprite.renderable === false) {
+        this.app.stage.removeChild(item.sprite);
+        item.active = false;
+      }
+    });
+  }
+
+  goToDestination(target, initialTravelAxis='y') {
+    if(this.state.path.length === 0) {
+      this.state.startPoint = { x: this.customer.x, y: this.customer.y };
+      this.state.endPoint = { x: target.x, y: target.y };
+      this.state.path = this.createPath(target, initialTravelAxis);
+    }
   }
 
   setTexture(dx, dy) {
@@ -111,20 +139,20 @@ export default class DinnerRush extends Component {
     const key = `${dx}, ${dy}`;
 
     switch(key) {
-      case '-1, 0': // Left
-        textures = this.walkingTextures.left;
-        break;
-      case '0, -1':// Up
-        textures = this.walkingTextures.up;
-        break;
-      case '1, 0':// Right
-        textures = this.walkingTextures.right;
-        break;
-      case '0, 1':// Down
-        textures = this.walkingTextures.down;
-        break;
-      default:
-        console.log('UH OH: ', key)
+    case '-1, 0': // Left
+      textures = this.walkingTextures.left;
+      break;
+    case '0, -1':// Up
+      textures = this.walkingTextures.up;
+      break;
+    case '1, 0':// Right
+      textures = this.walkingTextures.right;
+      break;
+    case '0, 1':// Down
+      textures = this.walkingTextures.down;
+      break;
+    default:
+      console.log('UH OH: ', key)
     }
 
     if(!isEqual(this.customer.textures, textures)) {
@@ -132,15 +160,27 @@ export default class DinnerRush extends Component {
     }
   }
 
-  createPath(destination) {
+  createPath(destination, initialTravelAxis) {
     const x0 = this.customer.x;
     const y0 = this.customer.y;
     const { x, y } = destination;
+    const [ dx, dy ] = [ x - x0,  y - y0 ];
 
-    return [
-      ...this.unitVectors([ x - x0, 0 ]),
-      ...this.unitVectors([ 0, y - y0 ])
-    ]
+    // initialTravelAxis that the customer travels along can be 'x' or 'y'
+    switch(initialTravelAxis.toLowerCase()) {
+      case 'x':
+        return [
+          ...this.unitVectors([ dx, 0 ]),
+          ...this.unitVectors([ 0, dy ])
+        ];
+        break;
+      case 'y':
+      default:
+        return [
+          ...this.unitVectors([ 0, dy ]),
+          ...this.unitVectors([ dx, 0 ])
+        ];
+    }
   }
 
   unitVectors(vector) {
@@ -153,7 +193,7 @@ export default class DinnerRush extends Component {
   }
 
   /**
-   * [ 
+   * [
    *   [ 0, 1 ],
    *   [ 0, 1 ],
    *   [ -1, 0 ]
@@ -165,6 +205,29 @@ export default class DinnerRush extends Component {
 
       this.walk(dx, dy);
     }
+  }
+
+  detectCollision(player, item) {
+    if (item.interactive === false) return; // Don't detect collision for 'dead' sprites
+    if (item.x < player.x + player.width &&
+      item.x + item.width > player.x &&
+      item.y < player.y + player.height &&
+      item.height + item.y > player.y) {
+      // collision detected!
+      console.log('collision detected');
+      // stop the customer from running into the sprite
+      this.state.path = [];
+      this.goToDestination(this.state.startPoint, 'x');
+
+      item.interactive = false;
+      item.renderable = false;
+    }
+  }
+
+  detectCollisions() {
+    this.items.forEach((item) => {
+      this.detectCollision(this.customer, item.sprite);
+    });
   }
 
   // Either change Y or X NOT both!
@@ -186,15 +249,17 @@ export default class DinnerRush extends Component {
     if(newY) {
       this.customer.y = newY;
     }
+
+    this.detectCollisions();
   }
 
   render() {
-   return (
-    <div 
-      className="DinnerRush"
-      ref={ (ref) => { this.containerNode = ReactDOM.findDOMNode(ref); } }
-    >
-    </div>
-   );
+    return (
+      <div
+        className="DinnerRush"
+        ref={ (ref) => { this.containerNode = ReactDOM.findDOMNode(ref); } }
+      >
+      </div>
+    );
   }
 }
