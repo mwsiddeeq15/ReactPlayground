@@ -43,7 +43,6 @@ const levelConfig = {
     storeItems,
     shoppingList: [
       'pineapple',
-      'melon',
       'melon'
     ]
   },

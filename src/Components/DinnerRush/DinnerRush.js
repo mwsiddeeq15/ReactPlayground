@@ -6,11 +6,11 @@ import isEqual from 'lodash.isequal';
 import { getLevelConfig } from './config';
 import './DinnerRush.css';
 
-const speedMultiplier = 5;
+const speedMultiplier = 3;
 const storePadding = 50;
 const itemSpacing = 75;
 const aisleSpacing = 150;
-const listItemAnchor = 50;
+const aisleOffset = -60;
 const listItemSpacing = 15;
 
 
@@ -27,12 +27,14 @@ export default class DinnerRush extends Component {
       shoppingList,
       startPoint: {},
       endPoint: {},
-      path: []
+      path: [],
+      numberOfItems: 0
     };
 
     this.onAssetsLoaded = this.onAssetsLoaded.bind(this);
     this.createPath = this.createPath.bind(this);
     this.goToDestination = this.goToDestination.bind(this);
+    this.addToTicker = this.addToTicker.bind(this);
   }
 
   componentDidMount() {
@@ -45,6 +47,8 @@ export default class DinnerRush extends Component {
         .add('customer', 'http://localhost:5001/resources/customer.json')
         .add('fruit', 'http://localhost:5001/resources/fruit.json')
         .load(this.onAssetsLoaded);
+
+        this.app.ticker.add(this.addToTicker);
     }
   }
 
@@ -56,6 +60,35 @@ export default class DinnerRush extends Component {
       down: Array.from(new Array(4)).map((_,i)=> PIXI.Texture.fromFrame(`customer-row1-col${ i+1 }`) ),
       left: Array.from(new Array(4)).map((_,i)=> PIXI.Texture.fromFrame(`customer-row2-col${ i+1 }`) )
     }
+
+    // add background
+    const backgroundTexture = PIXI.Texture.fromImage('http://localhost:5001/resources/floor.jpg')
+    const backgroundTextureForSprite = new PIXI.Texture(backgroundTexture, new PIXI.Rectangle(0, 0, this.app.screen.width, this.app.screen.height));
+    const background = new PIXI.Sprite(backgroundTextureForSprite);
+    background.anchor.x = 0;
+    background.anchor.y = 0;
+    background.position.x = 0;
+    background.position.y = 0;
+    this.app.stage.addChild( background );
+
+    // add shelves
+    const shelfTexture = PIXI.Texture.fromImage('http://localhost:5001/resources/shelf.png')
+    const shelfTextureForSprite = new PIXI.Texture(shelfTexture, new PIXI.Rectangle(0, 0, 64, 61));
+    const addShelf = ((texture, scaleX, scaleY, anchorX = 0, anchorY = 0, positionX = 0, positionY) => {
+      const shelf = new PIXI.Sprite(shelfTextureForSprite);
+      shelf.scale.x += scaleX;
+      shelf.scale.y += scaleY;
+      shelf.anchor.x = anchorX;
+      shelf.anchor.y = anchorY;
+      shelf.position.x = positionX;
+      shelf.position.y = positionY;
+      this.app.stage.addChild( shelf );
+      return shelf;
+    })
+
+    const bottomShelf = addShelf(shelfTextureForSprite, 7, 0.5, 0, 0, 0, 450);
+    const middleShelf = addShelf(shelfTextureForSprite, 7, 0.5, 0, 0, 0, 250);
+    const topShelf = addShelf(shelfTextureForSprite, 7, 0.5, 0, 0, 0, 50);
 
     // Initialize static and interactive items
     this.initItems();
@@ -78,10 +111,11 @@ export default class DinnerRush extends Component {
           this.customer.gotoAndPlay(1);
         }
 
-        this.followPath(path);
+        this.walkPath(path);
       } else {
         if(this.onPathComplete) {
           this.onPathComplete();
+          this.onPathComplete = null;
         }        
 
         this.customer.gotoAndStop(0);
@@ -101,7 +135,7 @@ export default class DinnerRush extends Component {
 
       const sprite = new PIXI.Sprite(PIXI.Texture.fromFrame(item.sprite));
       sprite.x = storePadding + itemSpacing * x;
-      sprite.y = this.app.screen.height - (storePadding + aisleSpacing * y);
+      sprite.y = this.app.screen.height - (storePadding + aisleOffset +aisleSpacing * y);
       sprite.anchor.set(0.5, 1);
       sprite.interactive = true;
 
@@ -111,6 +145,7 @@ export default class DinnerRush extends Component {
           setTimeout(() => {
             this.goToDestination(this.state.startPoint, 'x', () => { 
               this.customer.textures = this.walkingTextures.down;
+              this.state.numberOfItems += 1;
             });
             sprite.renderable = false;
           }, 750);
@@ -242,7 +277,7 @@ export default class DinnerRush extends Component {
    *   [ -1, 0 ]
    *  ]
    */
-  followPath(path) {
+  walkPath(path) {
     if(path.length > 0) {
       const [ dx, dy ] = path.shift();
 
@@ -250,28 +285,18 @@ export default class DinnerRush extends Component {
     }
   }
 
-  // detectCollision(player, item) {
-  //   if (item.interactive === false) return; // Don't detect collision for 'dead' sprites
-  //   if (item.x < player.x + player.width &&
-  //     item.x + item.width > player.x &&
-  //     item.y < player.y + player.height &&
-  //     item.height + item.y > player.y) {
-  //     // collision detected!
-  //     console.log('collision detected');
-  //     // stop the customer from running into the sprite
-  //     this.state.path = [];
-  //     this.goToDestination(this.state.startPoint, 'x');
-
-  //     item.interactive = false;
-  //     item.renderable = false;
-  //   }
-  // }
-
-  // detectCollisions() {
-  //   this.items.forEach((item) => {
-  //     this.detectCollision(this.customer, item.sprite);
-  //   });
-  // }
+  addToTicker() {
+    // watch for game end state
+    if (this.state.numberOfItems === this.state.shoppingList.length) {
+      const gameOverTextStyle = { fontFamily : 'Arial', fontSize: 32, fill : '#0067B1', align : 'center' };
+      const gameOverText = new PIXI.Text('Shopping Complete!', gameOverTextStyle);
+      gameOverText.x = this.app.screen.width/2;
+      gameOverText.y = this.app.screen.height/4;
+      gameOverText.anchor.set(0.5);
+      this.app.stage.addChild(gameOverText);
+      this.app.stop();
+    }
+  }
 
   // Either change Y or X NOT both!
   walk(dx,dy) {
@@ -292,8 +317,6 @@ export default class DinnerRush extends Component {
     if(newY) {
       this.customer.y = newY;
     }
-
-    // this.detectCollisions();
   }
 
   render() {
