@@ -12,6 +12,12 @@ const itemSpacing = 75;
 const aisleSpacing = 150;
 const aisleOffset = -60;
 const listItemSpacing = 15;
+const directions = {
+  UP: 'up',
+  RIGHT: 'right',
+  DOWN: 'down',
+  LEFT: 'left'
+}
 
 
 export default class DinnerRush extends Component {
@@ -25,6 +31,8 @@ export default class DinnerRush extends Component {
     this.state = {
       level,
       shoppingList,
+      walking: false,
+      direction: directions.DOWN,
       startPoint: {},
       endPoint: {},
       path: [],
@@ -35,6 +43,8 @@ export default class DinnerRush extends Component {
     this.createPath = this.createPath.bind(this);
     this.goToDestination = this.goToDestination.bind(this);
     this.addToTicker = this.addToTicker.bind(this);
+    this.setListeners = this.setListeners.bind(this);
+    this.detectCollisions = this.detectCollisions.bind(this);
   }
 
   componentDidMount() {
@@ -48,7 +58,7 @@ export default class DinnerRush extends Component {
         .add('fruit', 'http://localhost:5001/resources/fruit.json')
         .load(this.onAssetsLoaded);
 
-        this.app.ticker.add(this.addToTicker);
+      this.app.ticker.add(this.addToTicker);
     }
   }
 
@@ -95,7 +105,7 @@ export default class DinnerRush extends Component {
     // Initialize shopping
     this.initShoppingList();
 
-    this.customer = new PIXI.extras.AnimatedSprite(this.walkingTextures.down);
+    this.customer = new PIXI.extras.AnimatedSprite(this.walkingTextures[this.state.direction]);
     this.customer.x = this.app.screen.width - 275;
     this.customer.y = this.app.screen.height - 75;
     this.customer.anchor.set(0.5, 0);
@@ -104,7 +114,7 @@ export default class DinnerRush extends Component {
 
     this.app.ticker.add(() => {
 
-      const { path } = this.state;
+      const { path, walking, direction } = this.state;
 
       if(path.length > 0) {
         if(!this.customer.playing) {
@@ -116,16 +126,71 @@ export default class DinnerRush extends Component {
         if(this.onPathComplete) {
           this.onPathComplete();
           this.onPathComplete = null;
-        }        
-
-        this.customer.gotoAndStop(0);
+        }
+        else if(walking) {
+          if(!this.customer.playing) {
+            this.customer.gotoAndPlay(1);
+          }
+  
+          switch(direction) {
+            case directions.UP:
+              this.walk(0, -1);
+              break;
+            case directions.RIGHT:
+              this.walk(1, 0);
+              break;
+            case directions.DOWN:
+              this.walk(0, 1);
+              break;
+            case directions.LEFT:
+              this.walk(-1, 0);
+              break;
+          }
+        }
+        else {
+          this.customer.gotoAndStop(0);
+        }
       }
       
+      this.setListeners();
       this.refreshItems();
     });
 
     // start animating
     this.app.start();
+  }
+
+  setListeners() {
+    window.addEventListener('keydown', (e) => {
+      switch(e.keyCode) {
+        case 37:
+        case 65:
+          this.state.walking = true;
+          this.state.direction = directions.LEFT;
+          break;
+        case 38:
+        case 87:
+          this.state.walking = true;
+          this.state.direction = directions.UP;
+          break;
+        case 39:
+        case 68:
+          this.state.walking = true;
+          this.state.direction = directions.RIGHT;
+          break;
+        case 40:
+        case 83:
+          this.state.walking = true;
+          this.state.direction = directions.DOWN;
+          break;
+        default:
+          console.log('Key: ', e.keyCode)
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      this.state.walking = false;
+    });
   }
 
   initItems() {
@@ -298,6 +363,29 @@ export default class DinnerRush extends Component {
     }
   }
 
+  detectCollision(player, item) {
+    if (item.interactive === false) return; // Don't detect collision for 'dead' sprites
+    if (item.x < player.x + player.width &&
+      item.x + item.width > player.x &&
+      item.y < player.y + player.height &&
+      item.height + item.y > player.y) {
+      // collision detected!
+      console.log('collision detected');
+      // stop the customer from running into the sprite
+      this.state.path = [];
+      this.goToDestination(this.state.startPoint, 'x');
+
+      item.interactive = false;
+      item.renderable = false;
+    }
+  }
+
+  detectCollisions() {
+    this.items.forEach((item) => {
+      this.detectCollision(this.customer, item.sprite);
+    });
+  }
+
   // Either change Y or X NOT both!
   walk(dx,dy) {
     const { x, y } = this.customer;
@@ -317,6 +405,8 @@ export default class DinnerRush extends Component {
     if(newY) {
       this.customer.y = newY;
     }
+
+    this.detectCollisions();
   }
 
   render() {
